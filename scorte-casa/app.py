@@ -11,7 +11,8 @@ DB = os.environ.get("DB_PATH", os.path.join(BASE, "scorte.db"))
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8000"))
 STATIC = os.path.join(BASE, "static")
-REG_APERTA = os.environ.get("REGISTRAZIONE_APERTA") == "1"  # altrimenti si può creare solo il primo account
+REG_APERTA = os.environ.get("REGISTRAZIONE_APERTA") == "1"  # chiunque può creare un account
+INVITO = os.environ.get("CODICE_INVITO", "")  # oppure serve questo codice per creare un account
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE") == "1"
 DURATA = 30 * 86400
 
@@ -131,7 +132,15 @@ class Handler(BaseHTTPRequestHandler):
         chiave, ora = (self.client_address[0], nome), time.time()
         if azione == "registrati":
             if not (REG_APERTA or run("SELECT COUNT(*) AS n FROM utenti")[0][0]["n"] == 0):
-                return 403, {"errore": "Le registrazioni sono chiuse"}
+                if not INVITO:
+                    return 403, {"errore": "Le registrazioni sono chiuse"}
+                ck = ("invito", self.client_address[0])
+                FALLITI[ck] = [t for t in FALLITI.get(ck, []) if ora - t < 600]
+                if len(FALLITI[ck]) >= 5:
+                    return 429, {"errore": "Troppi tentativi: riprova tra qualche minuto"}
+                if not hmac.compare_digest(str(d.get("invito", "")).encode(), INVITO.encode()):
+                    FALLITI[ck].append(ora)
+                    return 403, {"errore": "Codice di invito errato"}
             if not re.fullmatch(r"[a-z0-9_.-]{3,32}", nome):
                 return 400, {"errore": "Il nome utente deve avere 3-32 caratteri: lettere, numeri, punto, trattino"}
             if not 8 <= len(pw) <= 200:
@@ -159,8 +168,9 @@ class Handler(BaseHTTPRequestHandler):
     def api(self, metodo, parti, query):
         if parti == ["stato"] and metodo == "GET":
             u = self.utente()
-            aperta = REG_APERTA or run("SELECT COUNT(*) AS n FROM utenti")[0][0]["n"] == 0
-            return 200, {"utente": u["username"] if u else None, "registrazione": aperta}
+            primo = run("SELECT COUNT(*) AS n FROM utenti")[0][0]["n"] == 0
+            return 200, {"utente": u["username"] if u else None, "registrazione": REG_APERTA or primo or bool(INVITO),
+                         "invito": bool(INVITO) and not REG_APERTA and not primo}
         if metodo != "GET" and not self.headers.get("Content-Type", "").startswith("application/json"):
             return 415, {"errore": "Richiesta non valida"}  # blocca i form inviati da altri siti (CSRF)
         if parti in (["registrati"], ["accedi"]) and metodo == "POST":

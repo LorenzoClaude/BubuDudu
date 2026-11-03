@@ -42,18 +42,30 @@ dialog input,dialog select{width:100%;padding:10px;border:1px solid var(--line);
 .err{color:var(--warn);min-height:1.4em;margin:10px 0 0}
 .fine{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 #lg label{display:block;margin:0 0 12px;font-weight:600}#lg input{width:100%;margin-top:4px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+
+:root[data-stile=kawaii]{--bg:#FDEEF1;--card:#FFFFFF;--ink:#5A3A2E;--soft:#7A5A4E;--line:#F3CDD6;--a:#C73E68;--warn:#B3261E;--warn-bg:#FDE3E0}
+:root[data-stile=kawaii][data-colore]{--a:#C73E68}
+:root[data-stile=kawaii][data-tema=scuro]{--bg:#2A1C22;--card:#3A2830;--ink:#FBE9EC;--soft:#D9B8C0;--line:#5A4049;--acc-ink:#2A1C22;--warn:#FF9A90;--warn-bg:#4A2622}
+[data-stile=kawaii] .row{border-radius:22px;border-width:2px}
+[data-stile=kawaii] .b{border-radius:999px;border-width:2px}
+[data-stile=kawaii] dialog{border-radius:26px}
+[data-stile=kawaii] h1{color:var(--acc)}
+.mascotte{display:none;gap:6px;margin-bottom:6px}
+[data-stile=kawaii] .mascotte{display:flex}
+.mascotte svg{width:58px;height:auto}
 </style>
 <script>
 (function(){var p={};try{p=JSON.parse(localStorage.getItem('aspetto')||'{}')}catch(e){}
 var q=matchMedia('(prefers-color-scheme: dark)');
 window.applicaAspetto=function(n){if(n){p=Object.assign(p,n);try{localStorage.setItem('aspetto',JSON.stringify(p))}catch(e){}}
-var t=p.tema||'auto',r=document.documentElement;r.dataset.tema=t==='auto'?(q.matches?'scuro':'chiaro'):t;r.dataset.colore=p.colore||'verde';return p};
+var t=p.tema||'auto',r=document.documentElement;r.dataset.tema=t==='auto'?(q.matches?'scuro':'chiaro'):t;r.dataset.colore=p.colore||'verde';r.dataset.stile=p.stile||'classico';return p};
 q.addEventListener('change',function(){applicaAspetto()});applicaAspetto()})();
 </script>
 </head>
 <body>
 <main>
 <button class="b" id="esci" hidden style="float:right"></button>
+<div class="mascotte" aria-hidden="true"><svg viewBox="0 0 64 80" xmlns="http://www.w3.org/2000/svg"><g stroke="#5A3A2E" stroke-width="2.5" stroke-linejoin="round"><circle cx="14" cy="15" r="9" fill="#C98F5E"/><circle cx="50" cy="15" r="9" fill="#C98F5E"/><circle cx="32" cy="38" r="25" fill="#C98F5E"/><ellipse cx="32" cy="47" rx="11" ry="8" fill="#F3D9B8"/><path d="M12 62Q32 74 52 62L52 68Q32 80 12 68Z" fill="#4FB286"/></g><ellipse cx="32" cy="43" rx="3.5" ry="2.5" fill="#5A3A2E"/><circle cx="22" cy="35" r="2.6" fill="#5A3A2E"/><circle cx="42" cy="35" r="2.6" fill="#5A3A2E"/><circle cx="16" cy="44" r="4" fill="#F59AAE" opacity=".7"/><circle cx="48" cy="44" r="4" fill="#F59AAE" opacity=".7"/><path d="M27 50Q32 54 37 50" fill="none" stroke="#5A3A2E" stroke-width="2" stroke-linecap="round"/></svg><svg viewBox="0 0 64 80" xmlns="http://www.w3.org/2000/svg"><g stroke="#5A3A2E" stroke-width="2.5"><circle cx="14" cy="15" r="9" fill="#3B2A2A"/><circle cx="50" cy="15" r="9" fill="#3B2A2A"/><circle cx="32" cy="38" r="25" fill="#FFFFFF"/></g><ellipse cx="22" cy="36" rx="6" ry="8" transform="rotate(20 22 36)" fill="#3B2A2A"/><ellipse cx="42" cy="36" rx="6" ry="8" transform="rotate(-20 42 36)" fill="#3B2A2A"/><circle cx="22" cy="36" r="2.2" fill="#FFFFFF"/><circle cx="42" cy="36" r="2.2" fill="#FFFFFF"/><ellipse cx="32" cy="45" rx="3.5" ry="2.5" fill="#3B2A2A"/><circle cx="15" cy="46" r="4" fill="#F59AAE" opacity=".7"/><circle cx="49" cy="46" r="4" fill="#F59AAE" opacity=".7"/><path d="M27 50Q32 54 37 50" fill="none" stroke="#3B2A2A" stroke-width="2" stroke-linecap="round"/><path d="M28 14Q32 3 40 6Q36 14 28 14Z" fill="#6BC48F" stroke="#3B6B4A" stroke-width="1.5"/></svg></div>
 <h1 id="titolo"></h1>
 <p class="sub" id="sotto"></p>
 <div id="vista"></div>
@@ -121,7 +133,10 @@ async function mostra() {
     $('#sotto').textContent = 'La scelta vale per questo dispositivo. Automatico segue il tema del telefono o del computer';
     v.innerHTML = `<div class="row"><div class="nome">Tema</div><div class="acts" role="group" aria-label="Tema">${temi.map(([k, l]) => `<button class="b ${tm === k ? 'p' : ''}" data-tema="${k}" aria-pressed="${tm === k}">${l}</button>`).join('')}</div></div>
       <div class="row"><div class="nome">Colore</div><div class="acts" role="group" aria-label="Colore">${colori.map(([k, l, c]) => `<button class="b ${co === k ? 'p' : ''}" data-colore="${k}" aria-pressed="${co === k}"><span class="sw" style="background:${c}"></span>${l}</button>`).join('')}</div></div>`;
-    v.querySelectorAll('[data-tema],[data-colore]').forEach(b => b.onclick = () => { applicaAspetto(b.dataset.tema ? {tema: b.dataset.tema} : {colore: b.dataset.colore}); mostra(); });
+    const st = p.stile || 'classico';
+    v.insertAdjacentHTML('afterbegin', `<div class="row"><div class="nome">Stile</div><div class="acts" role="group" aria-label="Stile">${[['classico', 'Classico'], ['kawaii', 'Kawaii']].map(([k, l]) => `<button class="b ${st === k ? 'p' : ''}" data-stile="${k}" aria-pressed="${st === k}">${l}</button>`).join('')}</div></div>`);
+    if (st === 'kawaii') v.lastElementChild.remove();
+    v.querySelectorAll('[data-tema],[data-colore],[data-stile]').forEach(b => b.onclick = () => { applicaAspetto(b.dataset.stile ? {stile: b.dataset.stile} : b.dataset.tema ? {tema: b.dataset.tema} : {colore: b.dataset.colore}); mostra(); });
     return;
   }
   articoli = await api('/api/articoli');
@@ -165,12 +180,14 @@ async function mostra() {
   }
 }
 $('#nav').onclick = e => { if (e.target.dataset.t) { tab = e.target.dataset.t; mostra(); } };
-function login(reg) {
+function login(s) {
+  const reg = s.registrazione;
   $('#nav').hidden = true; $('#esci').hidden = true;
   $('#titolo').textContent = 'Scorte di casa';
   $('#sotto').textContent = reg ? 'Accedi oppure crea il tuo account' : 'Accedi per continuare';
   $('#vista').innerHTML = `<form id="lg" class="row"><label>Nome utente<input name="username" autocomplete="username" required></label>
     <label>Password (almeno 8 caratteri)<input name="password" type="password" autocomplete="current-password" minlength="8" required></label>
+    ${s.invito ? '<label>Codice di invito (serve solo per creare un account)<input name="invito" autocomplete="off"></label>' : ''}
     <p class="err" id="lerr" role="alert"></p><div class="acts"><button class="b p" data-az="accedi">Accedi</button>${reg ? '<button class="b" data-az="registrati">Crea account</button>' : ''}</div></form>`;
   $('#lg').onsubmit = async e => {
     e.preventDefault();
@@ -180,7 +197,7 @@ function login(reg) {
 }
 async function avvia() {
   const s = await api('/api/stato');
-  if (!s.utente) return login(s.registrazione);
+  if (!s.utente) return login(s);
   $('#nav').hidden = false; $('#esci').hidden = false; $('#esci').textContent = `Esci (${s.utente})`;
   tab = 'spesa'; mostra().catch(e => $('#vista').textContent = e.message);
 }

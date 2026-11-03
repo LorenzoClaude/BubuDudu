@@ -17,7 +17,10 @@ Apri http://localhost:8000 e crea il primo account. Da un telefono nella stessa 
 | `PORT` | porta del server (default 8000) |
 | `HOST` | `127.0.0.1` per accettare solo connessioni locali (default `0.0.0.0`) |
 | `DB_PATH` | percorso del file SQLite (default `scorte.db` accanto ad `app.py`) |
-| `REGISTRAZIONE_APERTA` | `1` per permettere a chiunque di creare un account. Senza, si può creare solo il primo account |
+| `CODICE_INVITO` | frase segreta: chi la conosce può creare un account, chi no non può. Consigliata se l'app è su internet |
+| `REGISTRAZIONE_APERTA` | `1` per permettere a chiunque di creare un account senza codice |
+
+Senza nessuna delle due, si può creare solo il primo account. Ogni account ha il suo inventario, separato dagli altri.
 | `COOKIE_SECURE` | `1` per forzare il cookie di sessione solo su HTTPS (è attivo da solo se il proxy invia `X-Forwarded-Proto: https`) |
 
 ## Sicurezza
