@@ -26,7 +26,16 @@ Le password sono salvate con scrypt e un sale casuale, le sessioni durano 30 gio
 
 ## Pubblicazione
 
-GitHub conserva il codice ma non esegue app Python: GitHub Pages serve solo siti statici. Per usarla da internet serve un servizio che esegua Python e abbia un disco persistente per il file `scorte.db` (altrimenti i dati si perdono a ogni riavvio).
+GitHub conserva il codice ma non esegue app Python: GitHub Pages serve solo siti statici. L'app va quindi eseguita su un servizio che faccia girare Python e conservi il file `scorte.db` tra un riavvio e l'altro.
+
+`app.py` espone anche `application`, l'interfaccia WSGI richiesta da servizi come PythonAnywhere. Nel file WSGI del servizio bastano queste righe (cambia `TUOUTENTE`):
+
+    import os, sys
+    sys.path.insert(0, "/home/TUOUTENTE/BubuDudu")
+    os.environ["COOKIE_SECURE"] = "1"
+    from app import application
+
+Per aggiornare dopo un nuovo push: `git pull` nella console del servizio e poi Reload dell'app. Crea subito il tuo account appena l'app è online: finché non esiste nessun utente, chiunque conosca l'indirizzo può registrarsi per primo.
 
 ## Come funziona
 

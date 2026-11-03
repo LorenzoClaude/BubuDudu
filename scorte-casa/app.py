@@ -1,5 +1,7 @@
 """Scorte di casa: server web + API JSON + SQLite + login. Solo libreria standard di Python 3.8+."""
-import hashlib, hmac, json, mimetypes, os, re, secrets, sqlite3, time
+import hashlib, hmac, io, json, mimetypes, os, re, secrets, sqlite3, time
+from email.message import Message
+from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -254,6 +256,41 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         pass
+
+
+class HandlerWsgi(Handler):
+    """Adatta il Handler a WSGI, per hosting come PythonAnywhere che non lanciano app.py direttamente."""
+
+    def __init__(self, environ):
+        self.headers = Message()
+        for nome, chiave in (("Cookie", "HTTP_COOKIE"), ("Content-Type", "CONTENT_TYPE"),
+                             ("Content-Length", "CONTENT_LENGTH"), ("X-Forwarded-Proto", "HTTP_X_FORWARDED_PROTO")):
+            if environ.get(chiave):
+                self.headers[nome] = environ[chiave]
+        q = environ.get("QUERY_STRING")
+        self.path = environ.get("PATH_INFO", "/") + ("?" + q if q else "")
+        self.client_address = (environ.get("REMOTE_ADDR", ""), 0)
+        self.rfile, self.wfile = environ["wsgi.input"], io.BytesIO()
+        self.stato, self.intestazioni = 500, []
+
+    def send_response(self, code, message=None): self.stato = code
+    def send_header(self, k, v): self.intestazioni.append((k, v))
+    def end_headers(self): pass
+
+
+_pronto = False
+
+
+def application(environ, start_response):
+    global _pronto
+    if not _pronto:
+        for s in SCHEMA:
+            run(s)
+        _pronto = True
+    h = HandlerWsgi(environ)
+    h.gestisci(environ["REQUEST_METHOD"])
+    start_response(f"{h.stato} {HTTPStatus(h.stato).phrase}", h.intestazioni)
+    return [h.wfile.getvalue()]
 
 
 if __name__ == "__main__":
