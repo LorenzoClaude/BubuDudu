@@ -396,6 +396,22 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 run("DELETE FROM lista_modifiche WHERE utente_id = ? AND articolo_id = ?", (uid, art["id"]))
             return 200, {"ok": True}
+        if parti == ["lista", "conferma"] and metodo == "POST":
+            ids = self.corpo().get("ids")
+            if not isinstance(ids, list):
+                raise ValueError("Richiesta non valida")
+            scelti = {intero(i) for i in ids}
+            righe = [a for a in lista_spesa(uid) if a["id"] in scelti]
+            if not righe:
+                raise ValueError("Nessun articolo da confermare: la lista è cambiata")
+
+            def scrivi(c):
+                for a in righe:
+                    c.execute("INSERT INTO movimenti (articolo_id, tipo, delta, nota) VALUES (?,'carico',?,?)",
+                              (a["id"], a["da_comprare"], "Dalla lista della spesa"))
+                    c.execute("DELETE FROM lista_modifiche WHERE utente_id = ? AND articolo_id = ?", (uid, a["id"]))
+            transazione(scrivi)
+            return 200, {"confermati": len(righe)}
         if parti == ["spese"] and metodo == "POST":
             return 201, self.nuova_spesa(uid)
         if parti == ["spese"] and metodo == "GET":

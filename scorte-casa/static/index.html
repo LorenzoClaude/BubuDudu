@@ -44,6 +44,7 @@ dialog input,dialog select{width:100%;padding:10px;border:1px solid var(--line);
 #lg label{display:block;margin:0 0 12px;font-weight:600}#lg input{width:100%;margin-top:4px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
 
 .bar{flex-wrap:wrap;align-items:center}
+.b:disabled{opacity:.5;cursor:default}
 .mini{width:110px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
 summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:none}
 details .meta{display:block}
@@ -83,6 +84,10 @@ async function api(url, method = 'GET', body) {
 }
 let tab = 'spesa', articoli = [], categorie = [];
 const eur = x => Number(x).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'});
+function leggiFatti(l) {
+  try { return new Set(JSON.parse(localStorage.getItem('spuntati') || '[]').filter(i => l.some(a => a.id === i))); }
+  catch (e) { return new Set(); }
+}
 
 function chiedi(titolo, campi, conferma, ok) {
   const f = $('#frm');
@@ -132,6 +137,7 @@ async function mostra() {
   articoli = await api('/api/articoli');
   if (tab === 'spesa') {
     const l = await api('/api/spesa');
+    const fatti = leggiFatti(l), salva = () => localStorage.setItem('spuntati', JSON.stringify([...fatti]));
     const grp = localStorage.getItem('raggruppa') !== '0';
     const ord = grp ? l : [...l].sort((x, y) => x.nome.localeCompare(y.nome));
     const tot = l.reduce((t, a) => t + (a.prezzo_unitario ? a.prezzo_unitario * a.da_comprare : 0), 0);
@@ -139,13 +145,22 @@ async function mostra() {
     $('#titolo').textContent = 'Da comprare';
     $('#sotto').textContent = l.length ? `${l.length} articoli` + (tot ? `, stima ${eur(tot)}` + (senza ? ` (${senza} senza prezzo nello storico)` : '') : ', ancora nessun prezzo nello storico') : 'Niente da comprare';
     let cat;
-    const riga = a => `<div class="row spesa"><label><input type="checkbox"><span class="top"><span><span class="nome">${esc(a.nome)}</span><br><span class="meta">in casa ${n(a.giacenza)}${a.prezzo_unitario ? `, circa ${eur(a.prezzo_unitario)} / ${esc(a.unita)}` : ''}</span></span><span class="qta">${n(a.da_comprare)} ${esc(a.unita)}</span></span></label>
-      <div class="acts"><button class="b" data-q="${a.id}">Quantità</button><button class="b d" data-r="${a.id}">Togli</button></div></div>`;
-    v.innerHTML = `<div class="bar"><button class="b p" id="fatta">Spesa fatta</button><button class="b" id="agg">Aggiungi alla lista</button>${l.length ? '<button class="b" id="copia">Copia</button>' : ''}</div>
+    const riga = a => `<div class="row spesa"><label><input type="checkbox" data-c="${a.id}" ${fatti.has(a.id) ? 'checked' : ''}><span class="top"><span><span class="nome">${esc(a.nome)}</span><br><span class="meta">in casa ${n(a.giacenza)}${a.prezzo_unitario ? `, circa ${eur(a.prezzo_unitario)} / ${esc(a.unita)}` : ''}</span></span><span class="qta">${n(a.da_comprare)} ${esc(a.unita)}</span></span></label>
+      <div class="acts"><button class="b p" data-ok="${a.id}">Conferma</button><button class="b" data-q="${a.id}">Quantità</button><button class="b d" data-r="${a.id}">Togli</button></div></div>`;
+    v.innerHTML = `<div class="bar">${l.length ? '<button class="b p" id="conf"></button>' : ''}<button class="b" id="fatta">Spesa con prezzi</button><button class="b" id="agg">Aggiungi alla lista</button>${l.length ? '<button class="b" id="copia">Copia</button>' : ''}</div>
       <label class="meta"><input type="checkbox" id="grp" ${grp ? 'checked' : ''}> Raggruppa per categoria</label>` +
       (ord.map(a => { let h = ''; if (grp && a.categoria !== cat) { cat = a.categoria; h = `<div class="cat">${esc(a.categoria || 'Senza categoria')}</div>`; } return h + riga(a); }).join('')
         || '<p class="vuoto">Tutte le scorte sono sopra il minimo.</p>') +
       `<div class="bar" style="margin-top:16px"><button class="b" id="rip">Ripristina la lista automatica</button></div>`;
+    const aggiorna = () => { if (l.length) { $('#conf').textContent = `Conferma i spuntati (${fatti.size})`; $('#conf').disabled = !fatti.size; } };
+    aggiorna();
+    v.querySelectorAll('[data-c]').forEach(c => c.onchange = () => { c.checked ? fatti.add(+c.dataset.c) : fatti.delete(+c.dataset.c); salva(); aggiorna(); });
+    const conferma = async ids => {
+      try { await api('/api/lista/conferma', 'POST', {ids}); ids.forEach(i => fatti.delete(i)); salva(); mostra(); }
+      catch (x) { alert(x.message); }
+    };
+    v.querySelectorAll('[data-ok]').forEach(b => b.onclick = () => conferma([+b.dataset.ok]));
+    if (l.length) $('#conf').onclick = () => { if (confirm(`Aggiungere alla giacenza i ${fatti.size} articoli spuntati?`)) conferma([...fatti]); };
     $('#grp').onchange = e => { localStorage.setItem('raggruppa', e.target.checked ? '1' : '0'); mostra(); };
     $('#fatta').onclick = () => { tab = 'acquisto'; mostra(); };
     $('#agg').onclick = () => chiedi('Aggiungi alla lista', [{k: 'nome', l: 'Articolo', v: '', list: articoli.map(a => a.nome), req: 1}, {k: 'quantita', l: 'Quantità', v: 1, num: 1, req: 1}], 'Aggiungi', x => {
