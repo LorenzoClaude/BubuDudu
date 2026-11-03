@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scorte di casa</title>
+<style>
+:root{color-scheme:light;--bg:#EBF0EF;--card:#fff;--ink:#14302E;--soft:#566B69;--line:#D3DDDB;--a:#0E7566;--acc:var(--a);--acc-ink:#fff;--warn:#B8322A;--warn-bg:#FBE9E7}
+:root[data-colore=blu]{--a:#1D5FD1}:root[data-colore=viola]{--a:#6B3FC4}:root[data-colore=arancio]{--a:#B85200}
+:root[data-tema=scuro]{color-scheme:dark;--bg:#0F1D1C;--card:#182A28;--ink:#E6F0EE;--soft:#9DB3B0;--line:#2B4340;--acc:color-mix(in srgb,var(--a) 60%,#fff);--acc-ink:#0F1D1C;--warn:#FF8B80;--warn-bg:#3A1F1D}
+.sw{display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:8px;vertical-align:-2px;border:2px solid currentColor}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 "Avenir Next",ui-rounded,system-ui,sans-serif;padding-bottom:84px}
+main{max-width:640px;margin:0 auto;padding:20px 16px}
+h1{font-size:1.7rem;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--soft);margin:0 0 18px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line)}
+nav button{flex:1;padding:16px 8px;border:0;background:none;color:var(--soft);font:inherit;font-weight:600;cursor:pointer}
+nav button[aria-selected=true]{color:var(--acc);box-shadow:inset 0 3px 0 var(--acc)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.row{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.top{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.nome{font-weight:700}.meta{color:var(--soft);font-size:.9rem}
+.qta{font-size:1.5rem;font-weight:700;white-space:nowrap}
+.low .qta{color:var(--warn)}
+.tag{display:inline-block;background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:1px 8px;font-size:.85rem;font-weight:600}
+.cat{color:var(--soft);font-weight:600;margin:20px 0 8px;font-size:.95rem}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.b{border:1px solid var(--line);background:none;color:var(--ink);border-radius:8px;padding:8px 12px;font:inherit;font-size:.92rem;cursor:pointer}
+.b.p{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:700}
+.b.d{color:var(--warn)}
+.spesa label{display:flex;gap:12px;align-items:center;cursor:pointer}
+.spesa input{width:22px;height:22px;accent-color:var(--acc)}
+.spesa input:checked~.top{opacity:.45;text-decoration:line-through}
+.spesa .top{flex:1}
+.vuoto{color:var(--soft);padding:28px 8px;text-align:center}
+.bar{display:flex;gap:8px;margin-bottom:12px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(420px,92vw);padding:20px}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog label{display:block;margin:12px 0 4px;font-weight:600;font-size:.92rem}
+dialog input,dialog select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.err{color:var(--warn);min-height:1.4em;margin:10px 0 0}
+.fine{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+#lg label{display:block;margin:0 0 12px;font-weight:600}#lg input{width:100%;margin-top:4px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+</style>
+<script>
+(function(){var p={};try{p=JSON.parse(localStorage.getItem('aspetto')||'{}')}catch(e){}
+var q=matchMedia('(prefers-color-scheme: dark)');
+window.applicaAspetto=function(n){if(n){p=Object.assign(p,n);try{localStorage.setItem('aspetto',JSON.stringify(p))}catch(e){}}
+var t=p.tema||'auto',r=document.documentElement;r.dataset.tema=t==='auto'?(q.matches?'scuro':'chiaro'):t;r.dataset.colore=p.colore||'verde';return p};
+q.addEventListener('change',function(){applicaAspetto()});applicaAspetto()})();
+</script>
+</head>
+<body>
+<main>
+<button class="b" id="esci" hidden style="float:right"></button>
+<h1 id="titolo"></h1>
+<p class="sub" id="sotto"></p>
+<div id="vista"></div>
+</main>
+<nav id="nav">
+<button data-t="spesa">Spesa</button>
+<button data-t="articoli">Articoli</button>
+<button data-t="storico">Storico</button>
+<button data-t="aspetto">Aspetto</button>
+</nav>
+<dialog id="dlg"><form id="frm" method="dialog"></form></dialog>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const n = x => Number(x).toLocaleString('it-IT', {maximumFractionDigits: 3});
+async function api(url, method = 'GET', body) {
+  const r = await fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: body && JSON.stringify(body)});
+  const d = await r.json();
+  if (r.status === 401 && url !== '/api/accedi') { avvia(); throw new Error('Sessione scaduta: accedi di nuovo'); }
+  if (!r.ok) throw new Error(d.errore || 'Qualcosa è andato storto');
+  return d;
+}
+let tab = 'spesa', articoli = [];
+
+function chiedi(titolo, campi, conferma, ok) {
+  const f = $('#frm');
+  f.innerHTML = `<h2 style="margin:0">${esc(titolo)}</h2>` + campi.map(c => `<label for="f_${c.k}">${esc(c.l)}</label>` +
+    (c.list ? `<input id="f_${c.k}" name="${c.k}" list="dl_${c.k}" value="${esc(c.v)}" autocomplete="off"><datalist id="dl_${c.k}">${c.list.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`
+            : `<input id="f_${c.k}" name="${c.k}" value="${esc(c.v)}" ${c.num ? 'inputmode="decimal"' : ''} ${c.req ? 'required' : ''}>`)).join('') +
+    `<p class="err" id="err" role="alert"></p><div class="fine"><button type="button" class="b" id="no">Annulla</button><button class="b p">${esc(conferma)}</button></div>`;
+  $('#no').onclick = () => $('#dlg').close();
+  f.onsubmit = async e => {
+    e.preventDefault();
+    try { await ok(Object.fromEntries(new FormData(f))); $('#dlg').close(); mostra(); }
+    catch (x) { $('#err').textContent = x.message; }
+  };
+  $('#dlg').showModal();
+  f.querySelector('input').focus();
+}
+
+function movimento(a, tipo) {
+  const t = {carico: ['Aggiungi scorte', 'Aggiungi', 'Quantità acquistata'], consumo: ['Segna consumo', 'Scala giacenza', 'Quantità consumata'],
+             inventario: ['Conta in casa', 'Salva conteggio', 'Quantità che hai ora']}[tipo];
+  chiedi(`${t[0]}: ${a.nome}`, [{k: 'quantita', l: `${t[2]} (${a.unita})`, v: tipo === 'inventario' ? a.giacenza : '', num: 1, req: 1}], t[1],
+    v => api('/api/movimenti', 'POST', {articolo_id: a.id, tipo, quantita: v.quantita}));
+}
+
+function scheda(a) {
+  const cats = [...new Set(articoli.map(x => x.categoria).filter(Boolean))];
+  chiedi(a ? 'Modifica articolo' : 'Nuovo articolo', [
+    {k: 'nome', l: 'Nome', v: a?.nome, req: 1}, {k: 'categoria', l: 'Categoria', v: a?.categoria, list: cats},
+    {k: 'unita', l: 'Unità (pz, kg, l, confezioni)', v: a?.unita || 'pz', req: 1},
+    {k: 'scorta_minima', l: 'Scorta minima: sotto questa soglia va in lista della spesa', v: a?.scorta_minima ?? 1, num: 1}],
+    'Salva', v => a ? api('/api/articoli/' + a.id, 'PUT', v) : api('/api/articoli', 'POST', v));
+}
+
+async function mostra() {
+  document.querySelectorAll('nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.t === tab));
+  const v = $('#vista');
+  if (tab === 'aspetto') {
+    const p = applicaAspetto(), tm = p.tema || 'auto', co = p.colore || 'verde';
+    const temi = [['auto', 'Automatico'], ['chiaro', 'Chiaro'], ['scuro', 'Scuro']];
+    const colori = [['verde', 'Verde', '#0E7566'], ['blu', 'Blu', '#1D5FD1'], ['viola', 'Viola', '#6B3FC4'], ['arancio', 'Arancio', '#B85200']];
+    $('#titolo').textContent = 'Aspetto';
+    $('#sotto').textContent = 'La scelta vale per questo dispositivo. Automatico segue il tema del telefono o del computer';
+    v.innerHTML = `<div class="row"><div class="nome">Tema</div><div class="acts" role="group" aria-label="Tema">${temi.map(([k, l]) => `<button class="b ${tm === k ? 'p' : ''}" data-tema="${k}" aria-pressed="${tm === k}">${l}</button>`).join('')}</div></div>
+      <div class="row"><div class="nome">Colore</div><div class="acts" role="group" aria-label="Colore">${colori.map(([k, l, c]) => `<button class="b ${co === k ? 'p' : ''}" data-colore="${k}" aria-pressed="${co === k}"><span class="sw" style="background:${c}"></span>${l}</button>`).join('')}</div></div>`;
+    v.querySelectorAll('[data-tema],[data-colore]').forEach(b => b.onclick = () => { applicaAspetto(b.dataset.tema ? {tema: b.dataset.tema} : {colore: b.dataset.colore}); mostra(); });
+    return;
+  }
+  articoli = await api('/api/articoli');
+  if (tab === 'spesa') {
+    const l = await api('/api/spesa');
+    $('#titolo').textContent = 'Da comprare';
+    $('#sotto').textContent = l.length ? `${l.length} articoli sotto la scorta minima` : 'Niente da comprare';
+    v.innerHTML = (l.length ? `<div class="bar"><button class="b p" id="copia">Copia la lista</button></div>` : '') +
+      (l.map(a => `<div class="row spesa"><label><input type="checkbox"><span class="top"><span><span class="nome">${esc(a.nome)}</span><br><span class="meta">in casa ${n(a.giacenza)}, minimo ${n(a.scorta_minima)}</span></span><span class="qta">${n(a.da_comprare)} ${esc(a.unita)}</span></span></label></div>`).join('')
+      || '<p class="vuoto">Tutte le scorte sono sopra il minimo.</p>');
+    if (l.length) $('#copia').onclick = async e => {
+      await navigator.clipboard.writeText(l.map(a => `- ${a.nome}: ${n(a.da_comprare)} ${a.unita}`).join('\n'));
+      e.target.textContent = 'Lista copiata';
+    };
+  } else if (tab === 'articoli') {
+    $('#titolo').textContent = 'Articoli';
+    $('#sotto').textContent = `${articoli.length} articoli in anagrafica`;
+    let cat = null;
+    v.innerHTML = `<div class="bar"><button class="b p" id="nuovo">Nuovo articolo</button></div>` +
+      (articoli.map(a => {
+        const h = a.categoria !== cat ? `<div class="cat">${esc(a.categoria || 'Senza categoria')}</div>` : '';
+        cat = a.categoria;
+        const low = a.giacenza < a.scorta_minima;
+        return h + `<div class="row ${low ? 'low' : ''}"><div class="top"><div><span class="nome">${esc(a.nome)}</span> ${low ? '<span class="tag">Sotto scorta</span>' : ''}<br><span class="meta">minimo ${n(a.scorta_minima)} ${esc(a.unita)}</span></div><div class="qta">${n(a.giacenza)} ${esc(a.unita)}</div></div>
+        <div class="acts"><button class="b p" data-i="${a.id}" data-a="consumo">Consumato</button><button class="b" data-i="${a.id}" data-a="carico">Aggiungi</button><button class="b" data-i="${a.id}" data-a="inventario">Conta</button><button class="b" data-i="${a.id}" data-a="modifica">Modifica</button><button class="b d" data-i="${a.id}" data-a="elimina">Elimina</button></div></div>`;
+      }).join('') || '<p class="vuoto">Nessun articolo. Inizia aggiungendo il primo.</p>');
+    $('#nuovo').onclick = () => scheda();
+    v.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+      const a = articoli.find(x => x.id == b.dataset.i), z = b.dataset.a;
+      if (z === 'modifica') scheda(a);
+      else if (z === 'elimina') { if (confirm(`Eliminare "${a.nome}" e il suo storico?`)) api('/api/articoli/' + a.id, 'DELETE').then(mostra); }
+      else movimento(a, z);
+    });
+  } else {
+    const m = await api('/api/movimenti');
+    $('#titolo').textContent = 'Storico';
+    $('#sotto').textContent = 'Ultimi movimenti';
+    const lab = {carico: 'Aggiunto', consumo: 'Consumato', inventario: 'Conteggio'};
+    v.innerHTML = m.map(x => `<div class="row"><div class="top"><div><span class="nome">${esc(x.nome)}</span><br><span class="meta">${lab[x.tipo]}, ${esc(x.data)}</span></div><div class="qta">${x.delta > 0 ? '+' : ''}${n(x.delta)} ${esc(x.unita)}</div></div></div>`).join('')
+      || '<p class="vuoto">Ancora nessun movimento.</p>';
+  }
+}
+$('#nav').onclick = e => { if (e.target.dataset.t) { tab = e.target.dataset.t; mostra(); } };
+function login(reg) {
+  $('#nav').hidden = true; $('#esci').hidden = true;
+  $('#titolo').textContent = 'Scorte di casa';
+  $('#sotto').textContent = reg ? 'Accedi oppure crea il tuo account' : 'Accedi per continuare';
+  $('#vista').innerHTML = `<form id="lg" class="row"><label>Nome utente<input name="username" autocomplete="username" required></label>
+    <label>Password (almeno 8 caratteri)<input name="password" type="password" autocomplete="current-password" minlength="8" required></label>
+    <p class="err" id="lerr" role="alert"></p><div class="acts"><button class="b p" data-az="accedi">Accedi</button>${reg ? '<button class="b" data-az="registrati">Crea account</button>' : ''}</div></form>`;
+  $('#lg').onsubmit = async e => {
+    e.preventDefault();
+    try { await api('/api/' + (e.submitter?.dataset.az || 'accedi'), 'POST', Object.fromEntries(new FormData(e.target))); avvia(); }
+    catch (x) { $('#lerr').textContent = x.message; }
+  };
+}
+async function avvia() {
+  const s = await api('/api/stato');
+  if (!s.utente) return login(s.registrazione);
+  $('#nav').hidden = false; $('#esci').hidden = false; $('#esci').textContent = `Esci (${s.utente})`;
+  tab = 'spesa'; mostra().catch(e => $('#vista').textContent = e.message);
+}
+$('#esci').onclick = async () => { await api('/api/esci', 'POST'); avvia(); };
+avvia().catch(e => $('#vista').textContent = e.message);
+</script>
+</body>
+</html>
