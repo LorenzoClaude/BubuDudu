@@ -102,7 +102,7 @@ function chiedi(titolo, campi, conferma, ok) {
     catch (x) { $('#err').textContent = x.message; }
   };
   $('#dlg').showModal();
-  f.querySelector('input').focus();
+  f.querySelector('input,select').focus();
 }
 
 function movimento(a, tipo) {
@@ -163,10 +163,11 @@ async function mostra() {
     if (l.length) $('#conf').onclick = () => { if (confirm(`Aggiungere alla giacenza i ${fatti.size} articoli spuntati?`)) conferma([...fatti]); };
     $('#grp').onchange = e => { localStorage.setItem('raggruppa', e.target.checked ? '1' : '0'); mostra(); };
     $('#fatta').onclick = () => { tab = 'acquisto'; mostra(); };
-    $('#agg').onclick = () => chiedi('Aggiungi alla lista', [{k: 'nome', l: 'Articolo', v: '', list: articoli.map(a => a.nome), req: 1}, {k: 'quantita', l: 'Quantità', v: 1, num: 1, req: 1}], 'Aggiungi', x => {
-      const a = articoli.find(y => y.nome.toLowerCase() === x.nome.trim().toLowerCase());
-      if (!a) throw new Error('Articolo non trovato: crealo prima nella scheda Articoli');
-      return api('/api/lista', 'POST', {articolo_id: a.id, quantita: x.quantita});
+    $('#agg').onclick = () => chiedi('Aggiungi alla lista', [{k: 'articolo_id', l: 'Articolo', v: '', opts: articoli.length
+      ? [['', 'Scegli un articolo'], ...[...articoli].sort((p, q) => p.nome.localeCompare(q.nome)).map(a => [a.id, a.nome])]
+      : [['', 'Nessun articolo: creane uno dalla scheda Articoli']]}, {k: 'quantita', l: 'Quantità', v: 1, num: 1, req: 1}], 'Aggiungi', x => {
+      if (!x.articolo_id) throw new Error("Scegli un articolo dall'elenco");
+      return api('/api/lista', 'POST', {articolo_id: x.articolo_id, quantita: x.quantita});
     });
     v.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { const a = l.find(x => x.id == b.dataset.q);
       chiedi(`Quantità: ${a.nome}`, [{k: 'quantita', l: `Quantità da comprare (${a.unita})`, v: a.da_comprare, num: 1, req: 1}], 'Salva', x => api('/api/lista', 'POST', {articolo_id: a.id, quantita: x.quantita})); });
