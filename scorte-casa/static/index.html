@@ -43,29 +43,22 @@ dialog input,dialog select{width:100%;padding:10px;border:1px solid var(--line);
 .fine{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 #lg label{display:block;margin:0 0 12px;font-weight:600}#lg input{width:100%;margin-top:4px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
 
-:root[data-stile=kawaii]{--bg:#FDEEF1;--card:#FFFFFF;--ink:#5A3A2E;--soft:#7A5A4E;--line:#F3CDD6;--a:#C73E68;--warn:#B3261E;--warn-bg:#FDE3E0}
-:root[data-stile=kawaii][data-colore]{--a:#C73E68}
-:root[data-stile=kawaii][data-tema=scuro]{--bg:#2A1C22;--card:#3A2830;--ink:#FBE9EC;--soft:#D9B8C0;--line:#5A4049;--acc-ink:#2A1C22;--warn:#FF9A90;--warn-bg:#4A2622}
-[data-stile=kawaii] .row{border-radius:22px;border-width:2px}
-[data-stile=kawaii] .b{border-radius:999px;border-width:2px}
-[data-stile=kawaii] dialog{border-radius:26px}
-[data-stile=kawaii] h1{color:var(--acc)}
-.mascotte{display:none;gap:6px;margin-bottom:6px}
-[data-stile=kawaii] .mascotte{display:flex}
-.mascotte svg{width:58px;height:auto}
+.bar{flex-wrap:wrap;align-items:center}
+.mini{width:110px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+summary{cursor:pointer;list-style:none}summary::-webkit-details-marker{display:none}
+details .meta{display:block}
 </style>
 <script>
 (function(){var p={};try{p=JSON.parse(localStorage.getItem('aspetto')||'{}')}catch(e){}
 var q=matchMedia('(prefers-color-scheme: dark)');
 window.applicaAspetto=function(n){if(n){p=Object.assign(p,n);try{localStorage.setItem('aspetto',JSON.stringify(p))}catch(e){}}
-var t=p.tema||'auto',r=document.documentElement;r.dataset.tema=t==='auto'?(q.matches?'scuro':'chiaro'):t;r.dataset.colore=p.colore||'verde';r.dataset.stile=p.stile||'classico';return p};
+var t=p.tema||'auto',r=document.documentElement;r.dataset.tema=t==='auto'?(q.matches?'scuro':'chiaro'):t;r.dataset.colore=p.colore||'verde';return p};
 q.addEventListener('change',function(){applicaAspetto()});applicaAspetto()})();
 </script>
 </head>
 <body>
 <main>
 <button class="b" id="esci" hidden style="float:right"></button>
-<div class="mascotte" aria-hidden="true"><svg viewBox="0 0 64 80" xmlns="http://www.w3.org/2000/svg"><g stroke="#5A3A2E" stroke-width="2.5" stroke-linejoin="round"><circle cx="14" cy="15" r="9" fill="#C98F5E"/><circle cx="50" cy="15" r="9" fill="#C98F5E"/><circle cx="32" cy="38" r="25" fill="#C98F5E"/><ellipse cx="32" cy="47" rx="11" ry="8" fill="#F3D9B8"/><path d="M12 62Q32 74 52 62L52 68Q32 80 12 68Z" fill="#4FB286"/></g><ellipse cx="32" cy="43" rx="3.5" ry="2.5" fill="#5A3A2E"/><circle cx="22" cy="35" r="2.6" fill="#5A3A2E"/><circle cx="42" cy="35" r="2.6" fill="#5A3A2E"/><circle cx="16" cy="44" r="4" fill="#F59AAE" opacity=".7"/><circle cx="48" cy="44" r="4" fill="#F59AAE" opacity=".7"/><path d="M27 50Q32 54 37 50" fill="none" stroke="#5A3A2E" stroke-width="2" stroke-linecap="round"/></svg><svg viewBox="0 0 64 80" xmlns="http://www.w3.org/2000/svg"><g stroke="#5A3A2E" stroke-width="2.5"><circle cx="14" cy="15" r="9" fill="#3B2A2A"/><circle cx="50" cy="15" r="9" fill="#3B2A2A"/><circle cx="32" cy="38" r="25" fill="#FFFFFF"/></g><ellipse cx="22" cy="36" rx="6" ry="8" transform="rotate(20 22 36)" fill="#3B2A2A"/><ellipse cx="42" cy="36" rx="6" ry="8" transform="rotate(-20 42 36)" fill="#3B2A2A"/><circle cx="22" cy="36" r="2.2" fill="#FFFFFF"/><circle cx="42" cy="36" r="2.2" fill="#FFFFFF"/><ellipse cx="32" cy="45" rx="3.5" ry="2.5" fill="#3B2A2A"/><circle cx="15" cy="46" r="4" fill="#F59AAE" opacity=".7"/><circle cx="49" cy="46" r="4" fill="#F59AAE" opacity=".7"/><path d="M27 50Q32 54 37 50" fill="none" stroke="#3B2A2A" stroke-width="2" stroke-linecap="round"/><path d="M28 14Q32 3 40 6Q36 14 28 14Z" fill="#6BC48F" stroke="#3B6B4A" stroke-width="1.5"/></svg></div>
 <h1 id="titolo"></h1>
 <p class="sub" id="sotto"></p>
 <div id="vista"></div>
@@ -88,7 +81,8 @@ async function api(url, method = 'GET', body) {
   if (!r.ok) throw new Error(d.errore || 'Qualcosa è andato storto');
   return d;
 }
-let tab = 'spesa', articoli = [];
+let tab = 'spesa', articoli = [], categorie = [];
+const eur = x => Number(x).toLocaleString('it-IT', {style: 'currency', currency: 'EUR'});
 
 function chiedi(titolo, campi, conferma, ok) {
   const f = $('#frm');
@@ -114,7 +108,7 @@ function movimento(a, tipo) {
 }
 
 function scheda(a) {
-  const cats = [...new Set(articoli.map(x => x.categoria).filter(Boolean))];
+  const cats = categorie.map(x => x.nome);
   chiedi(a ? 'Modifica articolo' : 'Nuovo articolo', [
     {k: 'nome', l: 'Nome', v: a?.nome, req: 1}, {k: 'categoria', l: 'Categoria', v: a?.categoria, list: cats},
     {k: 'unita', l: 'Unità (pz, kg, l, confezioni)', v: a?.unita || 'pz', req: 1},
@@ -123,7 +117,7 @@ function scheda(a) {
 }
 
 async function mostra() {
-  document.querySelectorAll('nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.t === tab));
+  document.querySelectorAll('nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.t === ({categorie: 'articoli', acquisto: 'spesa'}[tab] || tab)));
   const v = $('#vista');
   if (tab === 'aspetto') {
     const p = applicaAspetto(), tm = p.tema || 'auto', co = p.colore || 'verde';
@@ -133,29 +127,75 @@ async function mostra() {
     $('#sotto').textContent = 'La scelta vale per questo dispositivo. Automatico segue il tema del telefono o del computer';
     v.innerHTML = `<div class="row"><div class="nome">Tema</div><div class="acts" role="group" aria-label="Tema">${temi.map(([k, l]) => `<button class="b ${tm === k ? 'p' : ''}" data-tema="${k}" aria-pressed="${tm === k}">${l}</button>`).join('')}</div></div>
       <div class="row"><div class="nome">Colore</div><div class="acts" role="group" aria-label="Colore">${colori.map(([k, l, c]) => `<button class="b ${co === k ? 'p' : ''}" data-colore="${k}" aria-pressed="${co === k}"><span class="sw" style="background:${c}"></span>${l}</button>`).join('')}</div></div>`;
-    const st = p.stile || 'classico';
-    v.insertAdjacentHTML('afterbegin', `<div class="row"><div class="nome">Stile</div><div class="acts" role="group" aria-label="Stile">${[['classico', 'Classico'], ['kawaii', 'Kawaii']].map(([k, l]) => `<button class="b ${st === k ? 'p' : ''}" data-stile="${k}" aria-pressed="${st === k}">${l}</button>`).join('')}</div></div>`);
-    if (st === 'kawaii') v.lastElementChild.remove();
-    v.querySelectorAll('[data-tema],[data-colore],[data-stile]').forEach(b => b.onclick = () => { applicaAspetto(b.dataset.stile ? {stile: b.dataset.stile} : b.dataset.tema ? {tema: b.dataset.tema} : {colore: b.dataset.colore}); mostra(); });
+    v.querySelectorAll('[data-tema],[data-colore]').forEach(b => b.onclick = () => { applicaAspetto(b.dataset.tema ? {tema: b.dataset.tema} : {colore: b.dataset.colore}); mostra(); });
     return;
   }
   articoli = await api('/api/articoli');
   if (tab === 'spesa') {
     const l = await api('/api/spesa');
+    const grp = localStorage.getItem('raggruppa') !== '0';
+    const ord = grp ? l : [...l].sort((x, y) => x.nome.localeCompare(y.nome));
+    const tot = l.reduce((t, a) => t + (a.prezzo_unitario ? a.prezzo_unitario * a.da_comprare : 0), 0);
+    const senza = l.filter(a => !a.prezzo_unitario).length;
     $('#titolo').textContent = 'Da comprare';
-    $('#sotto').textContent = l.length ? `${l.length} articoli sotto la scorta minima` : 'Niente da comprare';
-    v.innerHTML = (l.length ? `<div class="bar"><button class="b p" id="copia">Copia la lista</button></div>` : '') +
-      (l.map(a => `<div class="row spesa"><label><input type="checkbox"><span class="top"><span><span class="nome">${esc(a.nome)}</span><br><span class="meta">in casa ${n(a.giacenza)}, minimo ${n(a.scorta_minima)}</span></span><span class="qta">${n(a.da_comprare)} ${esc(a.unita)}</span></span></label></div>`).join('')
-      || '<p class="vuoto">Tutte le scorte sono sopra il minimo.</p>');
+    $('#sotto').textContent = l.length ? `${l.length} articoli` + (tot ? `, stima ${eur(tot)}` + (senza ? ` (${senza} senza prezzo nello storico)` : '') : ', ancora nessun prezzo nello storico') : 'Niente da comprare';
+    let cat;
+    const riga = a => `<div class="row spesa"><label><input type="checkbox"><span class="top"><span><span class="nome">${esc(a.nome)}</span><br><span class="meta">in casa ${n(a.giacenza)}${a.prezzo_unitario ? `, circa ${eur(a.prezzo_unitario)} / ${esc(a.unita)}` : ''}</span></span><span class="qta">${n(a.da_comprare)} ${esc(a.unita)}</span></span></label>
+      <div class="acts"><button class="b" data-q="${a.id}">Quantità</button><button class="b d" data-r="${a.id}">Togli</button></div></div>`;
+    v.innerHTML = `<div class="bar"><button class="b p" id="fatta">Spesa fatta</button><button class="b" id="agg">Aggiungi alla lista</button>${l.length ? '<button class="b" id="copia">Copia</button>' : ''}</div>
+      <label class="meta"><input type="checkbox" id="grp" ${grp ? 'checked' : ''}> Raggruppa per categoria</label>` +
+      (ord.map(a => { let h = ''; if (grp && a.categoria !== cat) { cat = a.categoria; h = `<div class="cat">${esc(a.categoria || 'Senza categoria')}</div>`; } return h + riga(a); }).join('')
+        || '<p class="vuoto">Tutte le scorte sono sopra il minimo.</p>') +
+      `<div class="bar" style="margin-top:16px"><button class="b" id="rip">Ripristina la lista automatica</button></div>`;
+    $('#grp').onchange = e => { localStorage.setItem('raggruppa', e.target.checked ? '1' : '0'); mostra(); };
+    $('#fatta').onclick = () => { tab = 'acquisto'; mostra(); };
+    $('#agg').onclick = () => chiedi('Aggiungi alla lista', [{k: 'nome', l: 'Articolo', v: '', list: articoli.map(a => a.nome), req: 1}, {k: 'quantita', l: 'Quantità', v: 1, num: 1, req: 1}], 'Aggiungi', x => {
+      const a = articoli.find(y => y.nome.toLowerCase() === x.nome.trim().toLowerCase());
+      if (!a) throw new Error('Articolo non trovato: crealo prima nella scheda Articoli');
+      return api('/api/lista', 'POST', {articolo_id: a.id, quantita: x.quantita});
+    });
+    v.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { const a = l.find(x => x.id == b.dataset.q);
+      chiedi(`Quantità: ${a.nome}`, [{k: 'quantita', l: `Quantità da comprare (${a.unita})`, v: a.da_comprare, num: 1, req: 1}], 'Salva', x => api('/api/lista', 'POST', {articolo_id: a.id, quantita: x.quantita})); });
+    v.querySelectorAll('[data-r]').forEach(b => b.onclick = () => api('/api/lista/' + b.dataset.r, 'DELETE').then(mostra));
+    $('#rip').onclick = () => api('/api/lista', 'DELETE').then(mostra);
     if (l.length) $('#copia').onclick = async e => {
-      await navigator.clipboard.writeText(l.map(a => `- ${a.nome}: ${n(a.da_comprare)} ${a.unita}`).join('\n'));
+      await navigator.clipboard.writeText(ord.map(a => `- ${a.nome}: ${n(a.da_comprare)} ${a.unita}`).join('\n'));
       e.target.textContent = 'Lista copiata';
     };
+  } else if (tab === 'acquisto') {
+    const l = await api('/api/spesa');
+    $('#titolo').textContent = 'Spesa fatta';
+    $('#sotto').textContent = 'Togli la spunta a ciò che non hai preso. Le quantità acquistate si sommano alla giacenza';
+    v.innerHTML = l.map(a => `<div class="row"><div class="top"><label><input type="checkbox" data-i="${a.id}" checked> <span class="nome">${esc(a.nome)}</span></label><span class="meta">${esc(a.unita)}</span></div>
+      <div class="acts"><input class="mini" data-qt="${a.id}" value="${a.da_comprare}" inputmode="decimal" aria-label="Quantità ${esc(a.nome)}"><input class="mini" data-pr="${a.id}" placeholder="Prezzo €" inputmode="decimal" aria-label="Prezzo pagato per ${esc(a.nome)}"></div></div>`).join('') +
+      `<div class="row"><label class="nome" for="tot">Totale dello scontrino (facoltativo)</label><input id="tot" class="mini" style="width:100%;margin-top:4px" inputmode="decimal" placeholder="Se vuoto, somma dei prezzi">
+      <label class="nome" for="neg" style="display:block;margin-top:10px">Negozio (facoltativo)</label><input id="neg" class="mini" style="width:100%;margin-top:4px"></div>
+      <p class="err" id="aerr" role="alert"></p><div class="bar"><button class="b" id="ann">Annulla</button><button class="b p" id="salva">Salva la spesa</button></div>`;
+    $('#ann').onclick = () => { tab = 'spesa'; mostra(); };
+    $('#salva').onclick = async () => {
+      const righe = [...v.querySelectorAll('[data-i]')].filter(c => c.checked).map(c => ({articolo_id: +c.dataset.i,
+        quantita: v.querySelector(`[data-qt="${c.dataset.i}"]`).value, prezzo: v.querySelector(`[data-pr="${c.dataset.i}"]`).value}));
+      try { await api('/api/spese', 'POST', {righe, totale: $('#tot').value, negozio: $('#neg').value}); localStorage.setItem('storico', 'spese'); tab = 'storico'; mostra(); }
+      catch (x) { $('#aerr').textContent = x.message; }
+    };
+  } else if (tab === 'categorie') {
+    const c = await api('/api/categorie');
+    $('#titolo').textContent = 'Categorie';
+    $('#sotto').textContent = 'Raggruppano gli articoli e la lista della spesa';
+    v.innerHTML = `<div class="bar"><button class="b" id="ind">Indietro</button><button class="b p" id="nc">Nuova categoria</button></div>` +
+      (c.map(x => `<div class="row"><span class="nome">${esc(x.nome)}</span><br><span class="meta">${x.articoli} articoli</span><div class="acts"><button class="b" data-rn="${x.id}">Rinomina</button><button class="b d" data-el="${x.id}">Elimina</button></div></div>`).join('') || '<p class="vuoto">Nessuna categoria.</p>');
+    $('#ind').onclick = () => { tab = 'articoli'; mostra(); };
+    $('#nc').onclick = () => chiedi('Nuova categoria', [{k: 'nome', l: 'Nome', v: '', req: 1}], 'Crea', x => api('/api/categorie', 'POST', x));
+    v.querySelectorAll('[data-rn]').forEach(b => b.onclick = () => { const x = c.find(y => y.id == b.dataset.rn);
+      chiedi('Rinomina categoria', [{k: 'nome', l: 'Nome', v: x.nome, req: 1}], 'Salva', y => api('/api/categorie/' + x.id, 'PUT', y)); });
+    v.querySelectorAll('[data-el]').forEach(b => b.onclick = () => { const x = c.find(y => y.id == b.dataset.el);
+      if (confirm(`Eliminare la categoria "${x.nome}"? Gli articoli restano, senza categoria.`)) api('/api/categorie/' + x.id, 'DELETE').then(mostra); });
   } else if (tab === 'articoli') {
     $('#titolo').textContent = 'Articoli';
     $('#sotto').textContent = `${articoli.length} articoli in anagrafica`;
+    categorie = await api('/api/categorie');
     let cat = null;
-    v.innerHTML = `<div class="bar"><button class="b p" id="nuovo">Nuovo articolo</button></div>` +
+    v.innerHTML = `<div class="bar"><button class="b p" id="nuovo">Nuovo articolo</button><button class="b" id="cat">Categorie</button></div>` +
       (articoli.map(a => {
         const h = a.categoria !== cat ? `<div class="cat">${esc(a.categoria || 'Senza categoria')}</div>` : '';
         cat = a.categoria;
@@ -164,6 +204,7 @@ async function mostra() {
         <div class="acts"><button class="b p" data-i="${a.id}" data-a="consumo">Consumato</button><button class="b" data-i="${a.id}" data-a="carico">Aggiungi</button><button class="b" data-i="${a.id}" data-a="inventario">Conta</button><button class="b" data-i="${a.id}" data-a="modifica">Modifica</button><button class="b d" data-i="${a.id}" data-a="elimina">Elimina</button></div></div>`;
       }).join('') || '<p class="vuoto">Nessun articolo. Inizia aggiungendo il primo.</p>');
     $('#nuovo').onclick = () => scheda();
+    $('#cat').onclick = () => { tab = 'categorie'; mostra(); };
     v.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
       const a = articoli.find(x => x.id == b.dataset.i), z = b.dataset.a;
       if (z === 'modifica') scheda(a);
@@ -171,12 +212,21 @@ async function mostra() {
       else movimento(a, z);
     });
   } else {
-    const m = await api('/api/movimenti');
+    const sp = localStorage.getItem('storico') !== 'mov';
     $('#titolo').textContent = 'Storico';
-    $('#sotto').textContent = 'Ultimi movimenti';
-    const lab = {carico: 'Aggiunto', consumo: 'Consumato', inventario: 'Conteggio'};
-    v.innerHTML = m.map(x => `<div class="row"><div class="top"><div><span class="nome">${esc(x.nome)}</span><br><span class="meta">${lab[x.tipo]}, ${esc(x.data)}</span></div><div class="qta">${x.delta > 0 ? '+' : ''}${n(x.delta)} ${esc(x.unita)}</div></div></div>`).join('')
-      || '<p class="vuoto">Ancora nessun movimento.</p>';
+    $('#sotto').textContent = sp ? 'Spese fatte, usate per stimare i prezzi della lista' : 'Ultimi movimenti';
+    const sw = `<div class="bar"><button class="b ${sp ? 'p' : ''}" data-s="spese">Spese</button><button class="b ${sp ? '' : 'p'}" data-s="mov">Movimenti</button></div>`;
+    if (sp) {
+      const sl = await api('/api/spese');
+      v.innerHTML = sw + (sl.map(x => `<details class="row"><summary class="top"><span><span class="nome">${esc(x.data)}${x.negozio ? ', ' + esc(x.negozio) : ''}</span><br><span class="meta">${x.righe.length} articoli</span></span><span class="qta">${x.totale != null ? eur(x.totale) : ''}</span></summary>${x.righe.map(r => `<span class="meta" style="margin-top:6px">${esc(r.nome)}: ${n(r.quantita)} ${esc(r.unita)}${r.prezzo != null ? ', ' + eur(r.prezzo) : ''}</span>`).join('')}</details>`).join('')
+        || '<p class="vuoto">Ancora nessuna spesa registrata. Dalla scheda Spesa premi "Spesa fatta".</p>');
+    } else {
+      const m = await api('/api/movimenti');
+      const lab = {carico: 'Aggiunto', consumo: 'Consumato', inventario: 'Conteggio'};
+      v.innerHTML = sw + (m.map(x => `<div class="row"><div class="top"><div><span class="nome">${esc(x.nome)}</span><br><span class="meta">${lab[x.tipo]}, ${esc(x.data)}</span></div><div class="qta">${x.delta > 0 ? '+' : ''}${n(x.delta)} ${esc(x.unita)}</div></div></div>`).join('')
+        || '<p class="vuoto">Ancora nessun movimento.</p>');
+    }
+    v.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { localStorage.setItem('storico', b.dataset.s); mostra(); });
   }
 }
 $('#nav').onclick = e => { if (e.target.dataset.t) { tab = e.target.dataset.t; mostra(); } };

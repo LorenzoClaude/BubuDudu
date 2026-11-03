@@ -21,10 +21,13 @@ SCHEMA = [
       id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, pw TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS sessioni (
       token TEXT PRIMARY KEY, utente_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE, scade REAL NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS categorie (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, utente_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,
+      nome TEXT NOT NULL COLLATE NOCASE, UNIQUE (utente_id, nome))""",
     """CREATE TABLE IF NOT EXISTS articoli (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       utente_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,
-      nome TEXT NOT NULL, categoria TEXT NOT NULL DEFAULT '', unita TEXT NOT NULL DEFAULT 'pz',
+      nome TEXT NOT NULL, categoria_id INTEGER REFERENCES categorie(id) ON DELETE SET NULL, unita TEXT NOT NULL DEFAULT 'pz',
       scorta_minima REAL NOT NULL DEFAULT 0 CHECK (scorta_minima >= 0), UNIQUE (utente_id, nome))""",
     """CREATE TABLE IF NOT EXISTS movimenti (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,10 +35,27 @@ SCHEMA = [
       tipo TEXT NOT NULL CHECK (tipo IN ('carico','consumo','inventario')),
       delta REAL NOT NULL, nota TEXT NOT NULL DEFAULT '',
       data TEXT NOT NULL DEFAULT (datetime('now','localtime')))""",
+    """CREATE TABLE IF NOT EXISTS lista_modifiche (
+      utente_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,
+      articolo_id INTEGER NOT NULL REFERENCES articoli(id) ON DELETE CASCADE,
+      azione TEXT NOT NULL CHECK (azione IN ('aggiungi','rimuovi')), quantita REAL, PRIMARY KEY (utente_id, articolo_id))""",
+    """CREATE TABLE IF NOT EXISTS spese (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, utente_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,
+      data TEXT NOT NULL, negozio TEXT NOT NULL DEFAULT '', totale REAL)""",
+    """CREATE TABLE IF NOT EXISTS spese_righe (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, spesa_id INTEGER NOT NULL REFERENCES spese(id) ON DELETE CASCADE,
+      articolo_id INTEGER NOT NULL REFERENCES articoli(id) ON DELETE CASCADE, quantita REAL NOT NULL, prezzo REAL)""",
 ]
 # La giacenza non è salvata: è la somma dei movimenti, così lo storico è sempre coerente.
-SEL = ("SELECT a.*, ROUND(COALESCE(SUM(m.delta),0),3) AS giacenza FROM articoli a "
-       "LEFT JOIN movimenti m ON m.articolo_id = a.id ")
+SEL = ("SELECT a.id, a.utente_id, a.nome, a.unita, a.scorta_minima, a.categoria_id, c.nome AS categoria, "
+       "ROUND(COALESCE(SUM(m.delta),0),3) AS giacenza FROM articoli a "
+       "LEFT JOIN categorie c ON c.id = a.categoria_id LEFT JOIN movimenti m ON m.articolo_id = a.id ")
+ORD = "ORDER BY (c.nome IS NULL), c.nome, a.nome"
+# Prezzo unitario stimato: media degli ultimi 3 acquisti con prezzo di ogni articolo.
+STIMA = ("SELECT articolo_id, AVG(up) AS stima FROM (SELECT r.articolo_id, r.prezzo / r.quantita AS up, "
+         "ROW_NUMBER() OVER (PARTITION BY r.articolo_id ORDER BY s.data DESC, r.id DESC) AS n "
+         "FROM spese_righe r JOIN spese s ON s.id = r.spesa_id "
+         "WHERE s.utente_id = ? AND r.prezzo IS NOT NULL AND r.quantita > 0) WHERE n <= 3 GROUP BY articolo_id")
 FALLITI = {}
 
 
@@ -86,6 +106,73 @@ def campi(d):
 def articolo(aid, uid):
     rows, _ = run(SEL + "WHERE a.id = ? AND a.utente_id = ? GROUP BY a.id", (aid, uid))
     return rows[0] if rows else None
+
+
+def intero(v):
+    t = str(v or "")
+    return int(t) if t.isdigit() else 0
+
+
+def nome_cat(d):
+    nome = str(d.get("nome", "")).strip()
+    if not nome or len(nome) > 60:
+        raise ValueError("Il nome della categoria è obbligatorio (massimo 60 caratteri)")
+    return nome
+
+
+def cat_id(uid, nome):
+    nome = str(nome or "").strip()
+    if not nome:
+        return None
+    r = run("SELECT id FROM categorie WHERE utente_id = ? AND nome = ?", (uid, nome))[0]
+    return r[0]["id"] if r else run("INSERT INTO categorie (utente_id, nome) VALUES (?,?)", (uid, nome))[1]
+
+
+def transazione(fn):
+    c = sqlite3.connect(DB)
+    c.execute("PRAGMA foreign_keys = ON")
+    try:
+        r = fn(c)
+        c.commit()
+        return r
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
+
+def migra():
+    """Database creati con le versioni precedenti: le categorie scritte a mano diventano categorie vere."""
+    colonne = [r["name"] for r in run("PRAGMA table_info(articoli)")[0]]
+    if "categoria_id" not in colonne:
+        run("ALTER TABLE articoli ADD COLUMN categoria_id INTEGER REFERENCES categorie(id) ON DELETE SET NULL")
+        if "categoria" in colonne:
+            run("INSERT OR IGNORE INTO categorie (utente_id, nome) SELECT DISTINCT utente_id, categoria FROM articoli "
+                "WHERE categoria <> ''")
+            run("UPDATE articoli SET categoria_id = (SELECT c.id FROM categorie c WHERE c.utente_id = articoli.utente_id "
+                "AND c.nome = articoli.categoria) WHERE categoria <> ''")
+
+
+def inizializza():
+    for istruzione in SCHEMA:
+        run(istruzione)
+    migra()
+
+
+def lista_spesa(uid):
+    """Lista automatica (sotto scorta) più le modifiche manuali: articoli aggiunti, tolti o con quantità cambiata."""
+    mod = {r["articolo_id"]: r for r in run("SELECT * FROM lista_modifiche WHERE utente_id = ?", (uid,))[0]}
+    prezzi = {r["articolo_id"]: r["stima"] for r in run(STIMA, (uid,))[0]}
+    righe = []
+    for a in run(SEL + "WHERE a.utente_id = ? GROUP BY a.id " + ORD, (uid,))[0]:
+        auto, m = a["giacenza"] < a["scorta_minima"], mod.get(a["id"])
+        if (m and m["azione"] == "rimuovi") or not (auto or m):
+            continue
+        a["da_comprare"] = m["quantita"] if m and m["quantita"] else (round(a["scorta_minima"] - a["giacenza"], 3) if auto else 1)
+        a["prezzo_unitario"] = round(prezzi[a["id"]], 4) if a["id"] in prezzi else None
+        righe.append(a)
+    return righe
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -165,6 +252,35 @@ class Handler(BaseHTTPRequestHandler):
         self.nuovo_cookie = self.cookie(t, DURATA)
         return 200, {"utente": nome}
 
+    def nuova_spesa(self, uid):
+        d = self.corpo()
+        righe = []
+        for r in d.get("righe") or []:
+            art = articolo(intero(r.get("articolo_id")), uid)
+            if not art:
+                raise ValueError("Articolo non valido")
+            p = None if str(r.get("prezzo", "")).strip() == "" else round(numero(r["prezzo"], "Il prezzo"), 2)
+            righe.append((art["id"], numero(r.get("quantita"), "La quantità", 0, True), p))
+        if not righe:
+            raise ValueError("Seleziona almeno un articolo")
+        totale = None if str(d.get("totale", "")).strip() == "" else round(numero(d["totale"], "Il totale"), 2)
+        if totale is None and any(p is not None for _, _, p in righe):
+            totale = round(sum(p or 0 for _, _, p in righe), 2)
+        data = str(d.get("data") or "")
+        data = data if re.fullmatch(r"\d{4}-\d{2}-\d{2}", data) else time.strftime("%Y-%m-%d")
+        negozio = str(d.get("negozio", "")).strip()[:80]
+
+        def scrivi(c):
+            sid = c.execute("INSERT INTO spese (utente_id, data, negozio, totale) VALUES (?,?,?,?)",
+                            (uid, data, negozio, totale)).lastrowid
+            for aid, q, p in righe:
+                c.execute("INSERT INTO spese_righe (spesa_id, articolo_id, quantita, prezzo) VALUES (?,?,?,?)", (sid, aid, q, p))
+                c.execute("INSERT INTO movimenti (articolo_id, tipo, delta, nota) VALUES (?,'carico',?,?)",
+                          (aid, q, f"Spesa del {data}"))
+            c.execute("DELETE FROM lista_modifiche WHERE utente_id = ?", (uid,))
+            return sid
+        return {"id": transazione(scrivi)}
+
     def api(self, metodo, parti, query):
         if parti == ["stato"] and metodo == "GET":
             u = self.utente()
@@ -184,19 +300,40 @@ class Handler(BaseHTTPRequestHandler):
         if not u:
             return 401, {"errore": "Accedi per continuare"}
         uid = u["id"]
+        if parti == ["categorie"] and metodo == "GET":
+            return 200, run("SELECT c.id, c.nome, COUNT(a.id) AS articoli FROM categorie c "
+                            "LEFT JOIN articoli a ON a.categoria_id = c.id WHERE c.utente_id = ? "
+                            "GROUP BY c.id ORDER BY c.nome", (uid,))[0]
+        if parti == ["categorie"] and metodo == "POST":
+            nome = nome_cat(self.corpo())
+            if run("SELECT 1 FROM categorie WHERE utente_id = ? AND nome = ?", (uid, nome))[0]:
+                raise ValueError("Esiste già una categoria con questo nome")
+            return 201, {"id": cat_id(uid, nome), "nome": nome}
+        if len(parti) == 2 and parti[0] == "categorie" and parti[1].isdigit():
+            cid = int(parti[1])
+            if not run("SELECT 1 FROM categorie WHERE id = ? AND utente_id = ?", (cid, uid))[0]:
+                return 404, {"errore": "Categoria non trovata"}
+            if metodo == "PUT":
+                run("UPDATE categorie SET nome = ? WHERE id = ?", (nome_cat(self.corpo()), cid))
+                return 200, {"ok": True}
+            if metodo == "DELETE":
+                run("DELETE FROM categorie WHERE id = ?", (cid,))
+                return 200, {"ok": True}
         if parti == ["articoli"] and metodo == "GET":
-            return 200, run(SEL + "WHERE a.utente_id = ? GROUP BY a.id ORDER BY a.categoria, a.nome", (uid,))[0]
+            return 200, run(SEL + "WHERE a.utente_id = ? GROUP BY a.id " + ORD, (uid,))[0]
         if parti == ["articoli"] and metodo == "POST":
-            nuovo = run("INSERT INTO articoli (nome, categoria, unita, scorta_minima, utente_id) VALUES (?,?,?,?,?)",
-                        campi(self.corpo()) + (uid,))[1]
+            nome, cat, unita, minima = campi(self.corpo())
+            nuovo = run("INSERT INTO articoli (nome, categoria_id, unita, scorta_minima, utente_id) VALUES (?,?,?,?,?)",
+                        (nome, cat_id(uid, cat), unita, minima, uid))[1]
             return 201, articolo(nuovo, uid)
         if len(parti) == 2 and parti[0] == "articoli" and parti[1].isdigit():
             aid = int(parti[1])
             if not articolo(aid, uid):
                 return 404, {"errore": "Articolo non trovato"}
             if metodo == "PUT":
-                run("UPDATE articoli SET nome=?, categoria=?, unita=?, scorta_minima=? WHERE id=? AND utente_id=?",
-                    campi(self.corpo()) + (aid, uid))
+                nome, cat, unita, minima = campi(self.corpo())
+                run("UPDATE articoli SET nome=?, categoria_id=?, unita=?, scorta_minima=? WHERE id=? AND utente_id=?",
+                    (nome, cat_id(uid, cat), unita, minima, aid, uid))
                 return 200, articolo(aid, uid)
             if metodo == "DELETE":
                 run("DELETE FROM articoli WHERE id = ? AND utente_id = ?", (aid, uid))
@@ -207,7 +344,7 @@ class Handler(BaseHTTPRequestHandler):
                             "WHERE a.utente_id = ? ORDER BY m.id DESC LIMIT ?", (uid, limite))[0]
         if parti == ["movimenti"] and metodo == "POST":
             d = self.corpo()
-            art = articolo(int(str(d.get("articolo_id") or 0)) if str(d.get("articolo_id") or 0).isdigit() else 0, uid)
+            art = articolo(intero(d.get("articolo_id")), uid)
             if not art:
                 return 404, {"errore": "Articolo non trovato"}
             tipo, giacenza = d.get("tipo"), art["giacenza"]
@@ -226,11 +363,38 @@ class Handler(BaseHTTPRequestHandler):
                 (art["id"], tipo, round(delta, 3), str(d.get("nota", "")).strip()))
             return 201, articolo(art["id"], uid)
         if parti == ["spesa"] and metodo == "GET":
-            righe = run(SEL + "WHERE a.utente_id = ? GROUP BY a.id HAVING giacenza < a.scorta_minima "
-                        "ORDER BY a.categoria, a.nome", (uid,))[0]
-            for r in righe:
-                r["da_comprare"] = round(r["scorta_minima"] - r["giacenza"], 3)
-            return 200, righe
+            return 200, lista_spesa(uid)
+        if parti == ["lista"] and metodo == "POST":
+            d = self.corpo()
+            art = articolo(intero(d.get("articolo_id")), uid)
+            if not art:
+                return 404, {"errore": "Articolo non trovato"}
+            run("INSERT OR REPLACE INTO lista_modifiche (utente_id, articolo_id, azione, quantita) VALUES (?,?,'aggiungi',?)",
+                (uid, art["id"], numero(d.get("quantita"), "La quantità", 0, True)))
+            return 200, {"ok": True}
+        if parti == ["lista"] and metodo == "DELETE":
+            run("DELETE FROM lista_modifiche WHERE utente_id = ?", (uid,))
+            return 200, {"ok": True}
+        if len(parti) == 2 and parti[0] == "lista" and parti[1].isdigit() and metodo == "DELETE":
+            art = articolo(int(parti[1]), uid)
+            if not art:
+                return 404, {"errore": "Articolo non trovato"}
+            if art["giacenza"] < art["scorta_minima"]:
+                run("INSERT OR REPLACE INTO lista_modifiche (utente_id, articolo_id, azione, quantita) VALUES (?,?,'rimuovi',NULL)",
+                    (uid, art["id"]))
+            else:
+                run("DELETE FROM lista_modifiche WHERE utente_id = ? AND articolo_id = ?", (uid, art["id"]))
+            return 200, {"ok": True}
+        if parti == ["spese"] and metodo == "POST":
+            return 201, self.nuova_spesa(uid)
+        if parti == ["spese"] and metodo == "GET":
+            sp = run("SELECT * FROM spese WHERE utente_id = ? ORDER BY data DESC, id DESC LIMIT 100", (uid,))[0]
+            rr = run("SELECT r.spesa_id, r.quantita, r.prezzo, a.nome, a.unita FROM spese_righe r "
+                     "JOIN articoli a ON a.id = r.articolo_id JOIN spese s ON s.id = r.spesa_id "
+                     "WHERE s.utente_id = ? ORDER BY r.id", (uid,))[0]
+            for x in sp:
+                x["righe"] = [r for r in rr if r["spesa_id"] == x["id"]]
+            return 200, sp
         return 404, {"errore": "Percorso non trovato"}
 
     def gestisci(self, metodo):
@@ -257,7 +421,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             self.invia(400, {"errore": str(e)})
         except sqlite3.IntegrityError:
-            self.invia(409, {"errore": "Esiste già un articolo con questo nome"})
+            self.invia(409, {"errore": "Esiste già un elemento con questo nome"})
 
     def do_GET(self): self.gestisci("GET")
     def do_POST(self): self.gestisci("POST")
@@ -294,8 +458,7 @@ _pronto = False
 def application(environ, start_response):
     global _pronto
     if not _pronto:
-        for s in SCHEMA:
-            run(s)
+        inizializza()
         _pronto = True
     h = HandlerWsgi(environ)
     h.gestisci(environ["REQUEST_METHOD"])
@@ -304,7 +467,6 @@ def application(environ, start_response):
 
 
 if __name__ == "__main__":
-    for s in SCHEMA:
-        run(s)
+    inizializza()
     print(f"Scorte di casa attivo su http://localhost:{PORT} (database: {DB})")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

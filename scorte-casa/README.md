@@ -42,6 +42,9 @@ Per aggiornare dopo un nuovo push: `git pull` nella console del servizio e poi R
 
 ## Come funziona
 
+- Gli articoli si raggruppano in categorie (scheda Articoli, pulsante Categorie), anche nella lista della spesa.
+- La lista della spesa parte dagli articoli sotto scorta e si può modificare: quantità, articoli aggiunti o tolti.
+- Con "Spesa fatta" registri prezzi e scontrino: le quantità si sommano alla giacenza e i prezzi finiscono nello storico, che serve a stimare il costo della lista (media degli ultimi 3 acquisti di ogni articolo).
 - La giacenza di un articolo è la somma dei suoi movimenti (aggiunte, consumi, conteggi). Il conteggio dell'inventario registra la differenza tra quanto conti e quanto risultava.
 - Un articolo finisce nella lista della spesa quando la giacenza scende sotto la scorta minima. La quantità proposta è la differenza fino al minimo.
 - Per il backup basta copiare `scorte.db`.
