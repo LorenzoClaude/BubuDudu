@@ -87,7 +87,7 @@ const eur = x => Number(x).toLocaleString('it-IT', {style: 'currency', currency:
 function chiedi(titolo, campi, conferma, ok) {
   const f = $('#frm');
   f.innerHTML = `<h2 style="margin:0">${esc(titolo)}</h2>` + campi.map(c => `<label for="f_${c.k}">${esc(c.l)}</label>` +
-    (c.list ? `<input id="f_${c.k}" name="${c.k}" list="dl_${c.k}" value="${esc(c.v)}" autocomplete="off"><datalist id="dl_${c.k}">${c.list.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`
+    (c.opts ? `<select id="f_${c.k}" name="${c.k}">${c.opts.map(([o, t]) => `<option value="${esc(o)}" ${String(o) === String(c.v ?? '') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>` : c.list ? `<input id="f_${c.k}" name="${c.k}" list="dl_${c.k}" value="${esc(c.v)}" autocomplete="off"><datalist id="dl_${c.k}">${c.list.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`
             : `<input id="f_${c.k}" name="${c.k}" value="${esc(c.v)}" ${c.num ? 'inputmode="decimal"' : ''} ${c.req ? 'required' : ''}>`)).join('') +
     `<p class="err" id="err" role="alert"></p><div class="fine"><button type="button" class="b" id="no">Annulla</button><button class="b p">${esc(conferma)}</button></div>`;
   $('#no').onclick = () => $('#dlg').close();
@@ -108,9 +108,8 @@ function movimento(a, tipo) {
 }
 
 function scheda(a) {
-  const cats = categorie.map(x => x.nome);
   chiedi(a ? 'Modifica articolo' : 'Nuovo articolo', [
-    {k: 'nome', l: 'Nome', v: a?.nome, req: 1}, {k: 'categoria', l: 'Categoria', v: a?.categoria, list: cats},
+    {k: 'nome', l: 'Nome', v: a?.nome, req: 1}, {k: 'categoria_id', l: 'Categoria (si creano dal pulsante Categorie)', v: a?.categoria_id ?? '', opts: [['', 'Senza categoria'], ...categorie.map(x => [x.id, x.nome])]},
     {k: 'unita', l: 'Unità (pz, kg, l, confezioni)', v: a?.unita || 'pz', req: 1},
     {k: 'scorta_minima', l: 'Scorta minima: sotto questa soglia va in lista della spesa', v: a?.scorta_minima ?? 1, num: 1}],
     'Salva', v => a ? api('/api/articoli/' + a.id, 'PUT', v) : api('/api/articoli', 'POST', v));

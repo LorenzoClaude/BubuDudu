@@ -128,6 +128,15 @@ def cat_id(uid, nome):
     return r[0]["id"] if r else run("INSERT INTO categorie (utente_id, nome) VALUES (?,?)", (uid, nome))[1]
 
 
+def cat_valida(uid, valore):
+    """La categoria di un articolo deve essere una categoria esistente dello stesso utente (oppure nessuna)."""
+    if str(valore if valore is not None else "").strip() == "":
+        return None
+    if not str(valore).isdigit() or not run("SELECT 1 FROM categorie WHERE id = ? AND utente_id = ?", (int(valore), uid))[0]:
+        raise ValueError("Scegli una categoria esistente")
+    return int(valore)
+
+
 def transazione(fn):
     c = sqlite3.connect(DB)
     c.execute("PRAGMA foreign_keys = ON")
@@ -322,18 +331,20 @@ class Handler(BaseHTTPRequestHandler):
         if parti == ["articoli"] and metodo == "GET":
             return 200, run(SEL + "WHERE a.utente_id = ? GROUP BY a.id " + ORD, (uid,))[0]
         if parti == ["articoli"] and metodo == "POST":
-            nome, cat, unita, minima = campi(self.corpo())
+            d = self.corpo()
+            nome, _, unita, minima = campi(d)
             nuovo = run("INSERT INTO articoli (nome, categoria_id, unita, scorta_minima, utente_id) VALUES (?,?,?,?,?)",
-                        (nome, cat_id(uid, cat), unita, minima, uid))[1]
+                        (nome, cat_valida(uid, d.get("categoria_id")), unita, minima, uid))[1]
             return 201, articolo(nuovo, uid)
         if len(parti) == 2 and parti[0] == "articoli" and parti[1].isdigit():
             aid = int(parti[1])
             if not articolo(aid, uid):
                 return 404, {"errore": "Articolo non trovato"}
             if metodo == "PUT":
-                nome, cat, unita, minima = campi(self.corpo())
+                d = self.corpo()
+                nome, _, unita, minima = campi(d)
                 run("UPDATE articoli SET nome=?, categoria_id=?, unita=?, scorta_minima=? WHERE id=? AND utente_id=?",
-                    (nome, cat_id(uid, cat), unita, minima, aid, uid))
+                    (nome, cat_valida(uid, d.get("categoria_id")), unita, minima, aid, uid))
                 return 200, articolo(aid, uid)
             if metodo == "DELETE":
                 run("DELETE FROM articoli WHERE id = ? AND utente_id = ?", (aid, uid))
